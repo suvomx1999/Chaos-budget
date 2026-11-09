@@ -22,6 +22,7 @@ from app.models.timeline import (
     SimulationResult,
     TimelineEvent,
 )
+from app.services.field_profiles import get_profile
 from app.utils.logger import logger
 
 # ── Luck classification for event types ───────────────────────────────
@@ -41,40 +42,6 @@ MED_LUCK_KEYWORDS = frozenset({
     "fellowship", "award", "promotion", "transferred", "selected",
     "noticed", "spotted", "recommended",
 })
-
-# Event types with inherent luck associations
-EVENT_TYPE_LUCK_BIAS: dict[EventType, float] = {
-    EventType.FAILURE: 0.70,      # Failures often involve external forces
-    EventType.RELOCATION: 0.65,   # Relocations are often circumstantial
-    EventType.PERSONAL: 0.50,     # Personal events: mixed
-    EventType.JOB: 0.40,          # Jobs: depends on context
-    EventType.ACHIEVEMENT: 0.30,  # Achievements: mostly earned
-    EventType.EDUCATION: 0.25,    # Education: mostly deliberate
-    EventType.SKILL: 0.15,        # Skills: almost entirely self-driven
-    EventType.OTHER: 0.40,        # Default
-}
-
-# Career progression Markov chain — transition probabilities
-# P(next_level | current_level, has_positive_event)
-# Used to propagate alternate paths forward
-CAREER_TRANSITIONS: dict[str, dict[str, float]] = {
-    "student": {"student": 0.10, "junior": 0.70, "mid": 0.15, "senior": 0.04, "lead": 0.01, "executive": 0.00},
-    "junior": {"student": 0.02, "junior": 0.30, "mid": 0.50, "senior": 0.14, "lead": 0.03, "executive": 0.01},
-    "mid": {"student": 0.00, "junior": 0.05, "mid": 0.35, "senior": 0.40, "lead": 0.15, "executive": 0.05},
-    "senior": {"student": 0.00, "junior": 0.02, "mid": 0.08, "senior": 0.40, "lead": 0.35, "executive": 0.15},
-    "lead": {"student": 0.00, "junior": 0.01, "mid": 0.04, "senior": 0.10, "lead": 0.45, "executive": 0.40},
-    "executive": {"student": 0.00, "junior": 0.00, "mid": 0.02, "senior": 0.05, "lead": 0.13, "executive": 0.80},
-}
-
-# Negative event transition modifiers (shift probability mass downward)
-NEGATIVE_CAREER_TRANSITIONS: dict[str, dict[str, float]] = {
-    "student": {"student": 0.60, "junior": 0.30, "mid": 0.08, "senior": 0.02, "lead": 0.00, "executive": 0.00},
-    "junior": {"student": 0.10, "junior": 0.55, "mid": 0.25, "senior": 0.08, "lead": 0.02, "executive": 0.00},
-    "mid": {"student": 0.02, "junior": 0.15, "mid": 0.50, "senior": 0.25, "lead": 0.06, "executive": 0.02},
-    "senior": {"student": 0.00, "junior": 0.05, "mid": 0.20, "senior": 0.45, "lead": 0.22, "executive": 0.08},
-    "lead": {"student": 0.00, "junior": 0.02, "mid": 0.08, "senior": 0.25, "lead": 0.45, "executive": 0.20},
-    "executive": {"student": 0.00, "junior": 0.01, "mid": 0.04, "senior": 0.10, "lead": 0.30, "executive": 0.55},
-}
 
 CAREER_LEVELS = ["student", "junior", "mid", "senior", "lead", "executive"]
 
@@ -124,24 +91,45 @@ class ChaosSimulator:
 
     Given a user's real timeline, identifies pivot points, simulates
     N alternate career paths, and computes the Chaos Coefficient.
+
+    Uses field-specific profiles (tech, medicine, finance, law, management,
+    academia) to tune luck weights and career transition probabilities.
     """
 
-    def __init__(self, seed: Optional[int] = None) -> None:
+    def __init__(self, seed: Optional[int] = None, field: str = "") -> None:
         """
         Args:
             seed: Optional RNG seed for reproducible simulations.
+            field: User's field of work (e.g. "software engineering").
+                   Loads a field-specific profile for tuned parameters.
         """
         self._rng = np.random.default_rng(seed)
         self._py_rng = random.Random(seed)
-        logger.info(f"ChaosSimulator initialised (seed={seed})")
+
+        # Load field-specific profile
+        self._profile = get_profile(field)
+        self._field = field
+        self._event_luck_bias = {
+            EventType(k): v
+            for k, v in self._profile["event_luck_bias"].items()
+        }
+        self._career_transitions = self._profile["career_transitions"]
+        self._negative_transitions = self._profile["negative_transitions"]
+        self._keyword_multiplier = self._profile.get("keyword_boost_multiplier", 1.0)
+
+        logger.info(
+            f"ChaosSimulator initialised (seed={seed}, "
+            f"field='{field}' → profile='{self._profile['description']}')"
+        )
 
     def _compute_luck_weight(self, event: TimelineEvent) -> float:
         """
         Compute a luck_weight (0.0 = pure skill, 1.0 = pure luck)
-        for a single event based on its type, description, and self_rating.
+        for a single event based on its type, description, self_rating,
+        and the field-specific profile.
         """
-        # Start with event type bias
-        base_weight = EVENT_TYPE_LUCK_BIAS.get(event.event_type, 0.40)
+        # Start with field-specific event type bias
+        base_weight = self._event_luck_bias.get(event.event_type, 0.40)
 
         # Scan title + description for luck keywords
         text = f"{event.title} {event.description or ''}".lower()
@@ -149,7 +137,10 @@ class ChaosSimulator:
         high_hits = sum(1 for kw in HIGH_LUCK_KEYWORDS if kw in text)
         med_hits = sum(1 for kw in MED_LUCK_KEYWORDS if kw in text)
 
-        keyword_boost = min(high_hits * 0.15 + med_hits * 0.08, 0.40)
+        keyword_boost = min(
+            (high_hits * 0.15 + med_hits * 0.08) * self._keyword_multiplier,
+            0.40,
+        )
 
         # Self-rating inversely correlates with luck
         # Rating 10 → luck_modifier = -0.25; Rating 1 → luck_modifier = +0.25
@@ -209,12 +200,12 @@ class ChaosSimulator:
     def _sample_career_level(
         self, current_level: str, positive_event: bool
     ) -> str:
-        """Sample the next career level from the Markov chain."""
+        """Sample the next career level from the field-specific Markov chain."""
         transitions = (
-            CAREER_TRANSITIONS if positive_event
-            else NEGATIVE_CAREER_TRANSITIONS
+            self._career_transitions if positive_event
+            else self._negative_transitions
         )
-        probs_dict = transitions.get(current_level, CAREER_TRANSITIONS["junior"])
+        probs_dict = transitions.get(current_level, self._career_transitions["junior"])
         levels = list(probs_dict.keys())
         probs = list(probs_dict.values())
 
@@ -509,6 +500,7 @@ class ChaosSimulator:
         user_id: str,
         events: List[TimelineEvent],
         current_level: str,
+        field: str = "",
         n_simulations: int = 1000,
     ) -> SimulationResult:
         """
@@ -521,6 +513,7 @@ class ChaosSimulator:
             user_id: The user's ID.
             events: The user's timeline events.
             current_level: The user's current career level string.
+            field: The user's field of work (used for logging).
             n_simulations: Number of Monte Carlo simulations (default 1000).
 
         Returns:
@@ -528,7 +521,8 @@ class ChaosSimulator:
         """
         logger.info(
             f"Starting full simulation for user={user_id}, "
-            f"events={len(events)}, level={current_level}, N={n_simulations}"
+            f"events={len(events)}, level={current_level}, "
+            f"field='{field}' → {self._profile['description']}, N={n_simulations}"
         )
 
         # Step 1: Identify pivot points

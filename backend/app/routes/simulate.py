@@ -56,13 +56,14 @@ async def run_simulation(
             detail="Timeline has no events. Add events before simulating.",
         )
 
-    # Run simulation
+    # Run simulation with field-specific profile
     try:
-        simulator = ChaosSimulator()
+        simulator = ChaosSimulator(field=timeline.field)
         result = simulator.run_full_simulation(
             user_id=body.user_id,
             events=timeline.events,
             current_level=timeline.current_level.value,
+            field=timeline.field,
             n_simulations=1000,
         )
     except Exception as exc:

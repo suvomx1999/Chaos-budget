@@ -21,7 +21,7 @@ export default function Navbar() {
             Analyze
           </Link>
           <a
-            href="https://github.com"
+            href="https://github.com/suvomx1999/Chaos-budget"
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-text-muted hover:text-text transition-colors"
