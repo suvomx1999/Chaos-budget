@@ -8,6 +8,7 @@ import Loader from "../components/UI/Loader";
 import Card from "../components/UI/Card";
 import TimelineForm from "../components/Timeline/TimelineForm";
 import TimelineEventCard from "../components/Timeline/TimelineEventCard";
+import TimelineSummary from "../components/Timeline/TimelineSummary";
 import TextPasteInput from "../components/Timeline/TextPasteInput";
 import { submitTimeline } from "../services/api";
 import type { TimelineEvent, CareerLevel } from "../types";
@@ -22,6 +23,64 @@ const CAREER_LEVELS: { value: CareerLevel; label: string }[] = [
 ];
 
 type Tab = "form" | "paste";
+
+function inferProfile(events: TimelineEvent[]): {
+  role: string;
+  field: string;
+  level: CareerLevel;
+} {
+  const sorted = [...events].sort(
+    (a, b) => a.year - b.year || (a.month || 0) - (b.month || 0)
+  );
+  const jobs = sorted.filter((e) => e.event_type === "job");
+  const lastJob = jobs.at(-1);
+  const last = sorted.at(-1);
+
+  const blob = events
+    .map((e) => `${e.title} ${e.organization ?? ""} ${e.description ?? ""}`)
+    .join(" ")
+    .toLowerCase();
+
+  const stillStudying = sorted.some((e) => e.event_type === "education");
+  const hasEmployerJob = jobs.some(
+    (e) => e.organization && !/project|hackathon|personal/i.test(`${e.title} ${e.organization}`)
+  );
+
+  const edu = [...sorted].reverse().find((e) => e.event_type === "education");
+  let role = "";
+  if (stillStudying && !hasEmployerJob && edu) {
+    role = edu.organization
+      ? `Student · ${edu.organization}`
+      : edu.title;
+  } else if (lastJob) {
+    role = lastJob.organization
+      ? `${lastJob.title} · ${lastJob.organization}`
+      : lastJob.title;
+  } else {
+    role = last?.title || "";
+  }
+
+  // CS/engineering keywords beat incidental "clinical"/"medical" project titles
+  let field = "";
+  if (/computer|software|cse|\bcs\b|machine learning|\bml\b|\bai\b|data sci|full.?stack/.test(blob)) {
+    field = "software engineering";
+  } else if (/medic|mbbs|doctor|nurs|pharmacy/.test(blob)) field = "medicine";
+  else if (/financ|bank|chartered accountant|\bca\b/.test(blob)) field = "finance";
+  else if (/\blaw\b|legal|advocate/.test(blob)) field = "law";
+  else if (/\bmba\b|consulting|management/.test(blob)) field = "management";
+  else if (/phd|professor|academia|research scholar/.test(blob)) field = "academia";
+
+  let level: CareerLevel = "student";
+  if (/executive|director|vp\b/.test(blob)) level = "executive";
+  else if (/lead|principal|staff/.test(blob)) level = "lead";
+  else if (/senior|sde-?2|sde-?3/.test(blob)) level = "senior";
+  else if (jobs.length >= 2) level = "mid";
+  else if (jobs.length >= 1) level = "junior";
+
+  if (stillStudying && !hasEmployerJob) level = "student";
+
+  return { role, field, level };
+}
 
 export default function Input() {
   const navigate = useNavigate();
@@ -43,11 +102,14 @@ export default function Input() {
   };
 
   const confirmParsedEvents = () => {
-    if (parsedEvents) {
-      setEvents(parsedEvents);
-      setParsedEvents(null);
-      setActiveTab("form");
-    }
+    if (!parsedEvents) return;
+    const inferred = inferProfile(parsedEvents);
+    setEvents(parsedEvents);
+    setParsedEvents(null);
+    setActiveTab("form");
+    setCurrentRole((prev) => prev.trim() || inferred.role);
+    setField((prev) => prev.trim() || inferred.field);
+    setCurrentLevel(inferred.level);
   };
 
   const editParsedEvent = (updated: TimelineEvent) => {
@@ -97,6 +159,16 @@ export default function Input() {
   };
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
+
+  // If events already exist (e.g. after confirm) but profile is blank, infer it.
+  useEffect(() => {
+    if (events.length === 0) return;
+    if (currentRole.trim() && field.trim()) return;
+    const inferred = inferProfile(events);
+    if (!currentRole.trim() && inferred.role) setCurrentRole(inferred.role);
+    if (!field.trim() && inferred.field) setField(inferred.field);
+    setCurrentLevel(inferred.level);
+  }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (submitting) {
     return (
@@ -177,6 +249,8 @@ export default function Input() {
                 </Button>
               </div>
 
+              <TimelineSummary events={parsedEvents} />
+
               {parsedEvents.map((event) => (
                 <TimelineEventCard
                   key={event.id}
@@ -194,28 +268,7 @@ export default function Input() {
           </motion.div>
         )}
 
-        {/* Tab content */}
-        {!parsedEvents && (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, x: activeTab === "form" ? -16 : 16 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: activeTab === "form" ? 16 : -16 }}
-              transition={{ duration: 0.2 }}
-            >
-              <Card className="mb-5">
-                {activeTab === "form" ? (
-                  <TimelineForm events={events} onEventsChange={setEvents} />
-                ) : (
-                  <TextPasteInput onEventsParsed={handleEventsParsed} />
-                )}
-              </Card>
-            </motion.div>
-          </AnimatePresence>
-        )}
-
-        {/* Profile fields */}
+        {/* Profile + submit sit ABOVE the long timeline so they aren't missed */}
         {events.length > 0 && !parsedEvents && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
@@ -267,12 +320,38 @@ export default function Input() {
               size="lg"
               onClick={handleSubmit}
               disabled={events.length === 0 || !currentRole.trim() || !field.trim()}
-              className="w-full"
+              className="w-full mb-5"
             >
               Analyze My Chaos Budget
               <ChevronRight className="h-4 w-4" />
             </Button>
+            {(!currentRole.trim() || !field.trim()) && (
+              <p className="-mt-3 mb-5 text-xs text-warning text-center">
+                Fill current role and field of work, then tap Analyze to see your results.
+              </p>
+            )}
           </motion.div>
+        )}
+
+        {/* Tab content */}
+        {!parsedEvents && (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, x: activeTab === "form" ? -16 : 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: activeTab === "form" ? 16 : -16 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Card className="mb-5">
+                {activeTab === "form" ? (
+                  <TimelineForm events={events} onEventsChange={setEvents} />
+                ) : (
+                  <TextPasteInput onEventsParsed={handleEventsParsed} />
+                )}
+              </Card>
+            </motion.div>
+          </AnimatePresence>
         )}
 
         {error && (

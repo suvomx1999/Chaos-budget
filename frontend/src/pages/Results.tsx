@@ -283,41 +283,55 @@ export default function Results() {
           </Card>
         </div>
 
-        {/* ── PAYWALL ────────────────────────────────────────── */}
+        {/* ── FREE: Chaos Story only ─────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="mb-6"
+        >
+          <h2 className="text-sm font-semibold mb-3 text-text-muted uppercase tracking-wider">
+            Your Chaos Story
+          </h2>
+          <NarrativeExplanation
+            variant="story"
+            chaos_story={explanation.chaos_story}
+            what_skill_built={explanation.what_skill_built}
+            what_luck_shaped={explanation.what_luck_shaped}
+            alternate_you={explanation.alternate_you}
+            surgery_suggestion={explanation.surgery_suggestion}
+          />
+        </motion.div>
+
+        {/* ── PAYWALL: remaining narrative + alternate paths ─── */}
         {showLocked && (
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: 0.4 }}
             className="mb-6"
           >
             <div className="relative rounded-2xl overflow-hidden">
-              {/* Blurred preview of locked content */}
               <div className="blur-md opacity-40 pointer-events-none select-none p-6">
                 <h2 className="text-sm font-semibold mb-3 text-text-muted uppercase tracking-wider">
-                  Alternate Career Paths
+                  Full Analysis
                 </h2>
-                <div className="bg-bg-card/60 rounded-xl p-4 mb-4">
-                  <div className="space-y-2">
-                    <div className="h-4 bg-white/[0.04] rounded w-3/4" />
-                    <div className="h-4 bg-white/[0.04] rounded w-1/2" />
-                    <div className="h-4 bg-white/[0.04] rounded w-2/3" />
-                  </div>
-                </div>
-                <h2 className="text-sm font-semibold mb-3 text-text-muted uppercase tracking-wider">
-                  AI Narrative
-                </h2>
-                <div className="bg-bg-card/60 rounded-xl p-4">
-                  <div className="space-y-2">
-                    <div className="h-4 bg-white/[0.04] rounded w-full" />
-                    <div className="h-4 bg-white/[0.04] rounded w-5/6" />
-                    <div className="h-4 bg-white/[0.04] rounded w-4/5" />
-                    <div className="h-4 bg-white/[0.04] rounded w-3/4" />
-                  </div>
+                <div className="space-y-3">
+                  {["What Skill Built", "What Luck Shaped", "The Alternate You", "Chaos Surgery"].map(
+                    (label) => (
+                      <div key={label} className="bg-bg-card/60 rounded-xl p-4">
+                        <p className="text-xs text-text-dim mb-2">{label}</p>
+                        <div className="space-y-2">
+                          <div className="h-3 bg-white/[0.04] rounded w-full" />
+                          <div className="h-3 bg-white/[0.04] rounded w-5/6" />
+                          <div className="h-3 bg-white/[0.04] rounded w-2/3" />
+                        </div>
+                      </div>
+                    )
+                  )}
                 </div>
               </div>
 
-              {/* Unlock overlay */}
               <div className="absolute inset-0 flex items-center justify-center bg-bg/60 backdrop-blur-sm">
                 <div className="text-center max-w-sm px-4">
                   <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-primary/[0.08] border border-primary/[0.15] flex items-center justify-center">
@@ -325,7 +339,7 @@ export default function Results() {
                   </div>
                   <h3 className="text-lg font-semibold mb-2">Unlock Full Analysis</h3>
                   <p className="text-sm text-text-muted mb-1">
-                    Get AI narrative, alternate career paths, and chaos surgery suggestion
+                    Skill vs luck breakdown, the alternate you, chaos surgery, and 5 counterfactual career paths
                   </p>
                   <p className="text-xs text-text-dim mb-5">
                     One-time payment · Instant access
@@ -347,13 +361,32 @@ export default function Results() {
           </motion.div>
         )}
 
-        {/* ── PAID TIER: Alternate Paths + Narrative ──────────── */}
+        {/* ── PAID: remaining narrative + paths ──────────────── */}
         {paid && (
           <>
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
+              transition={{ delay: 0.4 }}
+              className="mb-6"
+            >
+              <h2 className="text-sm font-semibold mb-3 text-text-muted uppercase tracking-wider">
+                Full Narrative
+              </h2>
+              <NarrativeExplanation
+                variant="full"
+                chaos_story=""
+                what_skill_built={explanation.what_skill_built}
+                what_luck_shaped={explanation.what_luck_shaped}
+                alternate_you={explanation.alternate_you}
+                surgery_suggestion={explanation.surgery_suggestion}
+              />
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
               className="mb-6"
             >
               <h2 className="text-sm font-semibold mb-3 text-text-muted uppercase tracking-wider">
@@ -365,24 +398,6 @@ export default function Results() {
                   pivotEvents={simResult.key_pivot_events}
                 />
               </Card>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              className="mb-6"
-            >
-              <h2 className="text-sm font-semibold mb-3 text-text-muted uppercase tracking-wider">
-                AI Narrative
-              </h2>
-              <NarrativeExplanation
-                chaos_story={explanation.chaos_story}
-                what_skill_built={explanation.what_skill_built}
-                what_luck_shaped={explanation.what_luck_shaped}
-                alternate_you={explanation.alternate_you}
-                surgery_suggestion={explanation.surgery_suggestion}
-              />
             </motion.div>
           </>
         )}

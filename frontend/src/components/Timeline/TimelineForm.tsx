@@ -3,6 +3,7 @@ import { Plus, X } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import Button from "../UI/Button";
 import TimelineEventCard from "./TimelineEventCard";
+import TimelineSummary from "./TimelineSummary";
 import type { TimelineEvent, EventType } from "../../types";
 
 const EVENT_TYPES: { value: EventType; label: string }[] = [
@@ -94,6 +95,8 @@ export default function TimelineForm({ events, onEventsChange }: TimelineFormPro
 
   return (
     <div>
+      {sorted.length > 0 && <TimelineSummary events={sorted} />}
+
       {sorted.length > 0 ? (
         <div className="mb-4">
           {sorted.map((event) => (

@@ -7,7 +7,10 @@ import { motion } from "framer-motion";
 import { BookOpen, Wrench, Sparkles, Users, Scissors } from "lucide-react";
 import type { ExplanationResponse } from "../../types";
 
-type NarrativeExplanationProps = Omit<ExplanationResponse, "user_id">;
+type NarrativeExplanationProps = Omit<ExplanationResponse, "user_id"> & {
+  /** "story" = free teaser (Chaos Story only). "full" = all sections. */
+  variant?: "story" | "full";
+};
 
 const SECTIONS = [
   {
@@ -40,10 +43,17 @@ const SECTIONS = [
   },
 ];
 
-export default function NarrativeExplanation(props: NarrativeExplanationProps) {
+export default function NarrativeExplanation({
+  variant = "full",
+  ...props
+}: NarrativeExplanationProps) {
+  const visible = variant === "story"
+    ? SECTIONS.filter((s) => s.key === "chaos_story")
+    : SECTIONS;
+
   return (
     <div className="space-y-3">
-      {SECTIONS.map((section, i) => {
+      {visible.map((section, i) => {
         const Icon = section.icon;
         const text = props[section.key];
         if (!text) return null;
@@ -75,8 +85,8 @@ export default function NarrativeExplanation(props: NarrativeExplanationProps) {
         );
       })}
 
-      {/* Surgery Suggestion */}
-      {props.surgery_suggestion && (
+      {/* Surgery Suggestion — paid only */}
+      {variant === "full" && props.surgery_suggestion && (
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}

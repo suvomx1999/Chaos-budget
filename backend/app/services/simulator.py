@@ -400,9 +400,14 @@ class ChaosSimulator:
         """
         Compute the Chaos Coefficient and skill/luck/timing breakdown.
 
-        chaos_coefficient: fraction of simulated peers who ended up BELOW
-        the user's actual level. Higher = more luck involved in reaching
-        this level (most simulated versions of you ended up lower).
+        chaos_coefficient: how much of the user's position is luck.
+
+        For mid/senior+ levels this is mostly "what fraction of simulated
+        yous ended up BELOW your real level" (classic counterfactual luck).
+
+        For students (floor of the ladder) that fraction is always 0 —
+        nobody can finish below student — so we blend pivot-event luck
+        weights with how much simulated outcomes fan out instead.
 
         skill_percentage: derived from self_ratings of LOW-luck events.
         luck_percentage: weighted sum of luck_weights at pivot points.
@@ -423,17 +428,28 @@ class ChaosSimulator:
 
         # ── Chaos coefficient from simulation outcomes ────────────────
         simulated_outcomes = getattr(self, "_last_simulated_outcomes", [])
+        avg_luck = (
+            float(np.mean([p["luck_weight"] for p in pivot_points]))
+            if pivot_points else 0.4
+        )
 
         if simulated_outcomes:
-            user_ordinal = CAREER_LEVELS.index(user_current_level) if user_current_level in CAREER_LEVELS else 2
-            below_count = sum(
-                1 for o in simulated_outcomes
-                if CAREER_LEVELS.index(o) < user_ordinal
+            user_ordinal = (
+                CAREER_LEVELS.index(user_current_level)
+                if user_current_level in CAREER_LEVELS else 2
             )
-            chaos_coefficient = below_count / len(simulated_outcomes)
+            ordinals = [CAREER_LEVELS.index(o) for o in simulated_outcomes]
+            n = len(ordinals)
+            below_frac = sum(1 for o in ordinals if o < user_ordinal) / n
+            max_spread = float(len(CAREER_LEVELS) - 1)
+            spread = float(np.std(ordinals) / max_spread) if max_spread else 0.0
+
+            if user_ordinal <= 0:
+                # Student / career floor: rank-vs-below is always 0.
+                chaos_coefficient = 0.6 * avg_luck + 0.4 * spread
+            else:
+                chaos_coefficient = 0.7 * below_frac + 0.3 * avg_luck
         else:
-            # Fallback heuristic when no simulations ran
-            avg_luck = np.mean([p["luck_weight"] for p in pivot_points]) if pivot_points else 0.5
             chaos_coefficient = avg_luck
 
         # ── Skill percentage (from LOW-luck self_ratings) ─────────────
